@@ -6,9 +6,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const RUNTIME = path.resolve(ROOT, "src-tauri", "resources", "libreoffice", "runtime");
 
+// Prune only content that is absolutely never needed for headless conversion.
+// DO NOT prune help/ — LibreOffice resolves help/idxcontent.xsl + idxcaption.xsl
+// when importing ODF packages (flat-XML import tolerated absence, packages do not).
 const PRUNE_DIRS = [
-  "help",
-  "share/help",
   "share/examples",
   "share/template",
   "share/gallery",
