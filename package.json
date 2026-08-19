@@ -15,6 +15,7 @@
     "test:watch": "vitest",
     "tauri": "tauri",
     "fetch:lo": "node scripts/fetch-libreoffice.mjs",
+    "package:lo": "node scripts/package-libreoffice.mjs",
     "smoke:convert": "node scripts/smoke-convert.mjs"
   },
   "dependencies": {

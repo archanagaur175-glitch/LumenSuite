@@ -1,0 +1,55 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Minimal capability allow-list: dialogs open/save, filesystem scoped to app-data (recovery + working) and dialog-picked paths, single opener URL. No network/http plugin.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    {
+      "identifier": "dialog:allow-open",
+      "allow": [
+        {
+          "path": "**"
+        }
+      ]
+    },
+    {
+      "identifier": "dialog:allow-save",
+      "allow": [
+        {
+          "path": "**"
+        }
+      ]
+    },
+    "dialog:allow-message",
+    {
+      "identifier": "fs:allow-read-file",
+      "allow": [
+        { "path": "$APPDATA/com.lumensuite.app/**" }
+      ],
+      "requireLiteralLeadingDot": false
+    },
+    {
+      "identifier": "fs:allow-write-file",
+      "allow": [
+        { "path": "$APPDATA/com.lumensuite.app/**" }
+      ],
+      "requireLiteralLeadingDot": false
+    },
+    {
+      "identifier": "fs:allow-mkdir",
+      "allow": [
+        { "path": "$APPDATA/com.lumensuite.app/**" }
+      ],
+      "requireLiteralLeadingDot": false
+    },
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://github.com/archanagaur175-glitch/LumenSuite/releases"
+        }
+      ]
+    }
+  ]
+}

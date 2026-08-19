@@ -10,6 +10,8 @@ src-tauri/gen/
 
 # LibreOffice runtime (fetched at build/dev time, never committed)
 src-tauri/resources/libreoffice/*
+!src-tauri/resources/libreoffice/placeholder.txt
+scripts/.cache/
 
 # Editor/OS
 .vscode/*

@@ -1,0 +1,1 @@
+﻿LibreOffice runtime is fetched into this directory at build time by scripts/fetch-libreoffice.mjs

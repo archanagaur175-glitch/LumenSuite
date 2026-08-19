@@ -1,0 +1,117 @@
+name: Release
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Package ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            lo_pkg: linux
+          - platform: macos-latest
+            lo_pkg: macos
+          - platform: windows-latest
+            lo_pkg: windows
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Linux system deps
+        if: matrix.lo_pkg == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libgtk-3-dev libxdo-dev libssl-dev libayatana-appindicator3-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Frontend build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Fetch bundled LibreOffice runtime
+        run: npm run fetch:lo
+        env:
+          LO_VERSION: "26.2.5"
+
+      - name: Prune runtime to minimal convert set
+        run: npm run package:lo
+
+      - name: Smoke-test engine conversion
+        run: npm run smoke:convert
+
+      - name: Run CI checks (frontend + Rust)
+        run: |
+          npm run typecheck
+          npm run lint
+          cd src-tauri && cargo clippy --all-targets -- -D warnings && cd ..
+
+      - name: Build release bundle
+        shell: bash
+        run: npm run tauri build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ""
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List artifacts
+        shell: bash
+        run: |
+          ls -lh src-tauri/target/release/bundle/
+          find . -name "*.msi" -o -name "*.dmg" -o -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" | head -20
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-suite-${{ matrix.platform }}
+          path: |
+            src-tauri/target/release/bundle/**/*.msi
+            src-tauri/target/release/bundle/**/*.dmg
+            src-tauri/target/release/bundle/**/*.deb
+            src-tauri/target/release/bundle/**/*.rpm
+            src-tauri/target/release/bundle/**/*.AppImage
+            src-tauri/target/release/bundle/**/*.app.tar.gz
+
+  release:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Lumen Suite ${{ github.ref_name }}
+          body: |
+            Local-first, ad-free, private office suite (Writer / Calc / Impress).
+
+            **Engine:** bundled LibreOffice ${{ env.LO_VERSION }}
+            **License:** GPL-3.0-or-later
+
+            > This is an automated build. macOS and Linux binaries are unsigned; Windows
+            > installer is unsigned. Windows SmartScreen may warn until the binary is trusted.
+          files: |
+            artifacts/**/*
+          generate_release_notes: true

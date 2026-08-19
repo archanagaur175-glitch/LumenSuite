@@ -28,5 +28,14 @@ export default tseslint.config(
       "react-hooks/preserve-manual-memoization": "off",
       "react-hooks/exhaustive-deps": "warn",
     },
+  },
+  {
+    files: ["scripts/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        process: "readonly",
+        console: "readonly",
+      },
+    },
   }
 );
