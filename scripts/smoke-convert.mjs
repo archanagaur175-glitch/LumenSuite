@@ -119,7 +119,8 @@ async function main() {
 
   let allPass = true;
   for (const [docId, { xml, tests }] of Object.entries(docs)) {
-    const input = path.join(work, `${docId}.od${docId === "writer" ? "t" : docId === "calc" ? "s" : "p"}`);
+    const extMap = { writer: "fodt", calc: "fods", impress: "fodp" };
+    const input = path.join(work, `${docId}.${extMap[docId]}`);
     await writeFile(input, xml, "utf8");
     for (const ext of tests) {
       const result = await convert(bin, profile, work, docId, input, ext);
