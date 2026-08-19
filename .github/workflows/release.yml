@@ -107,7 +107,7 @@ jobs:
           body: |
             Local-first, ad-free, private office suite (Writer / Calc / Impress).
 
-            **Engine:** bundled LibreOffice ${{ env.LO_VERSION }}
+            **Engine:** bundled LibreOffice 26.2.5
             **License:** GPL-3.0-or-later
 
             > This is an automated build. macOS and Linux binaries are unsigned; Windows
