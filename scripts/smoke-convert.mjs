@@ -9,6 +9,100 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const RUNTIME = path.resolve(ROOT, "src-tauri", "resources", "libreoffice", "runtime");
 
+function crc32(buf) {
+  let table = crc32.table;
+  if (!table) {
+    table = crc32.table = new Int32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      table[n] = c;
+    }
+  }
+  let c = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) c = table[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+// Minimal store-only ZIP writer for ODF packages.
+function odfPackage(mimetype, contentXml) {
+  const files = new Map();
+  files.set("mimetype", Buffer.from(mimetype, "utf8"));
+  files.set("content.xml", Buffer.from(contentXml, "utf8"));
+  files.set(
+    "META-INF/manifest.xml",
+    Buffer.from(
+      `<?xml version="1.0" encoding="UTF-8"?>` +
+        `<manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" manifest:version="1.2">` +
+        `<manifest:file-entry manifest:full-path="/" manifest:media-type="${mimetype}"/>` +
+        `<manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/>` +
+        `</manifest:manifest>`,
+      "utf8"
+    )
+  );
+  const chunks = [];
+  let offset = 0;
+  const central = [];
+  let i = 0;
+  for (const [name, data] of files) {
+    const nameBuf = Buffer.from(name, "utf8");
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0, 6);
+    local.writeUInt16LE(0, 8);
+    local.writeUInt16LE(0, 10);
+    local.writeUInt16LE(0, 12);
+    local.writeUInt32LE(crc32(data), 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26);
+    local.writeUInt16LE(0, 28);
+    central.push({
+      name,
+      nameBuf,
+      crc: crc32(data),
+      size: data.length,
+      off: offset,
+      index: i++,
+    });
+    chunks.push(local, nameBuf, data);
+    offset += local.length + nameBuf.length + data.length;
+  }
+  const cdStart = offset;
+  for (const e of central) {
+    const rec = Buffer.alloc(46);
+    rec.writeUInt32LE(0x02014b50, 0);
+    rec.writeUInt16LE(20, 4);
+    rec.writeUInt16LE(20, 6);
+    rec.writeUInt16LE(0, 8);
+    rec.writeUInt16LE(0, 10);
+    rec.writeUInt16LE(0, 12);
+    rec.writeUInt32LE(0, 14);
+    rec.writeUInt32LE(e.crc, 16);
+    rec.writeUInt32LE(e.size, 20);
+    rec.writeUInt32LE(e.size, 24);
+    rec.writeUInt16LE(e.nameBuf.length, 28);
+    rec.writeUInt16LE(0, 30);
+    rec.writeUInt16LE(0, 32);
+    rec.writeUInt16LE(0, 34);
+    rec.writeUInt16LE(0, 36);
+    rec.writeUInt16LE(0, 38);
+    rec.writeUInt32LE(0, 40);
+    rec.writeUInt32LE(e.off, 42);
+    chunks.push(rec, e.nameBuf);
+    offset += rec.length + e.nameBuf.length;
+  }
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(central.length, 8);
+  eocd.writeUInt16LE(central.length, 10);
+  eocd.writeUInt32LE(offset - cdStart, 12);
+  eocd.writeUInt32LE(cdStart, 16);
+  chunks.push(eocd);
+  return Buffer.concat(chunks);
+}
+
 function sofficeBinary() {
   if (process.env.LUMEN_SUITE_SOFFICE) return process.env.LUMEN_SUITE_SOFFICE;
   const candidates =
@@ -112,16 +206,27 @@ async function main() {
   await mkdir(profile, { recursive: true });
 
   const docs = {
-    writer: { xml: WRITER_XML, tests: ["docx", "odt", "pdf"] },
-    calc: { xml: CALC_XML, tests: ["xlsx", "ods", "pdf"] },
-    impress: { xml: IMPRESS_XML, tests: ["pptx", "odp", "pdf"] },
+    writer: {
+      mimetype: "application/vnd.oasis.opendocument.text",
+      xml: WRITER_XML,
+      tests: ["docx", "odt", "pdf"],
+    },
+    calc: {
+      mimetype: "application/vnd.oasis.opendocument.spreadsheet",
+      xml: CALC_XML,
+      tests: ["xlsx", "ods", "pdf"],
+    },
+    impress: {
+      mimetype: "application/vnd.oasis.opendocument.presentation",
+      xml: IMPRESS_XML,
+      tests: ["pptx", "odp", "pdf"],
+    },
   };
 
   let allPass = true;
-  for (const [docId, { xml, tests }] of Object.entries(docs)) {
-    const extMap = { writer: "fodt", calc: "fods", impress: "fodp" };
-    const input = path.join(work, `${docId}.${extMap[docId]}`);
-    await writeFile(input, xml, "utf8");
+  for (const [docId, { mimetype, xml, tests }] of Object.entries(docs)) {
+    const input = path.join(work, `${docId}.od${docId === "writer" ? "t" : docId === "calc" ? "s" : "p"}`);
+    await writeFile(input, odfPackage(mimetype, xml));
     for (const ext of tests) {
       const result = await convert(bin, profile, work, docId, input, ext);
       if (result !== "PASS") allPass = false;
