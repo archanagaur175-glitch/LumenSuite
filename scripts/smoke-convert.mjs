@@ -82,11 +82,12 @@ async function convert(bin, profile, work, docId, input, ext) {
     [
       "--headless", "--invisible", "--nologo", "--nodefault", "--norestore", "--nolockcheck",
       `-env:UserInstallation=${profileUrl}`,
-      `--convert-to ${FILTERS[ext]}`,
+      "--convert-to",
+      FILTERS[ext],
       "--outdir", outdir,
       input,
     ],
-    { encoding: "utf8", timeout: 180_000 }
+    { encoding: "utf8", timeout: 120_000 }
   );
   const out = path.join(outdir, `${docId}.${ext}`);
   if (r.status !== 0 || !exists(out)) {
